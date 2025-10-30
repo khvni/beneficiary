@@ -1,0 +1,240 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Beneficiary {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Personal Information
+  firstName     String
+  lastName      String
+  dateOfBirth   DateTime?
+  gender        Gender?
+  nationality   String?
+  idNumber      String?  @unique // IC number or passport
+
+  // Contact Information
+  phone         String?
+  email         String?
+  address       String?
+  city          String?
+  state         String?
+  postcode      String?
+
+  // Emergency Contact
+  emergencyName  String?
+  emergencyPhone String?
+  emergencyRelation String?
+
+  // Beneficiary Details
+  category      BeneficiaryCategory
+  status        BeneficiaryStatus @default(ACTIVE)
+  priority      Priority @default(MEDIUM)
+  notes         String?  @db.Text
+  tags          String[] // ["homeless", "elderly", "disabled"]
+
+  // Photos & Documents
+  photoUrl      String?
+  documents     Document[]
+
+  // Relationships
+  cases         Case[]
+  services      Service[]
+  createdBy     User   @relation("BeneficiaryCreator", fields: [createdById], references: [id])
+  createdById   String
+  assignedTo    User?  @relation("BeneficiaryAssignee", fields: [assignedToId], references: [id])
+  assignedToId  String?
+
+  // Metadata
+  source        String? // "google_form", "manual_entry", "referral"
+  externalId    String? // For migration from old system
+
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
+}
+
+model Case {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  title         String
+  description   String   @db.Text
+  type          CaseType
+  priority      Priority @default(MEDIUM)
+  status        CaseStatus @default(OPEN)
+
+  beneficiary   Beneficiary @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+  beneficiaryId String
+
+  assignedTo    User[]   @relation("CaseAssignees")
+  createdBy     User     @relation("CaseCreator", fields: [createdById], references: [id])
+  createdById   String
+
+  services      Service[]
+
+  resolvedAt    DateTime?
+
+  @@index([status])
+  @@index([beneficiaryId])
+}
+
+model Service {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  type          ServiceType
+  date          DateTime
+  description   String?  @db.Text
+  quantity      Int?     // e.g., number of meals, nights of shelter
+  cost          Decimal? @db.Decimal(10, 2)
+
+  beneficiary   Beneficiary @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+  beneficiaryId String
+
+  case          Case?    @relation(fields: [caseId], references: [id])
+  caseId        String?
+
+  providedBy    User     @relation(fields: [providedById], references: [id])
+  providedById  String
+
+  location      String?
+  notes         String?  @db.Text
+
+  @@index([type])
+  @@index([beneficiaryId])
+  @@index([date])
+}
+
+model Document {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+
+  name          String
+  type          String   // "id_card", "medical_report", "photo", etc.
+  url           String
+  size          Int      // bytes
+  mimeType      String
+
+  beneficiary   Beneficiary @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+  beneficiaryId String
+
+  uploadedBy    User     @relation(fields: [uploadedById], references: [id])
+  uploadedById  String
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  password      String?  // Hashed password
+  role          UserRole
+  organization  String?  // For partners
+  phone         String?
+
+  // Relations
+  createdBeneficiaries Beneficiary[] @relation("BeneficiaryCreator")
+  assignedBeneficiaries Beneficiary[] @relation("BeneficiaryAssignee")
+  createdCases  Case[]   @relation("CaseCreator")
+  assignedCases Case[]   @relation("CaseAssignees")
+  providedServices Service[]
+  uploadedDocuments Document[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String
+  details     Json
+  userId      String
+  ipAddress   String?
+  userAgent   String?
+  timestamp   DateTime @default(now())
+
+  @@index([userId])
+  @@index([timestamp])
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum BeneficiaryCategory {
+  HOMELESS
+  ELDERLY
+  DISABLED
+  LOW_INCOME
+  REFUGEE
+  ORPHAN
+  SICK
+  OTHER
+}
+
+enum BeneficiaryStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+  DECEASED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CaseType {
+  FOOD
+  SHELTER
+  HEALTHCARE
+  EDUCATION
+  IDENTITY_DOCUMENTS
+  EMPLOYMENT
+  OTHER
+}
+
+enum CaseStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum ServiceType {
+  FOOD_DISTRIBUTION
+  SHELTER_ADMISSION
+  SHELTER_EXIT
+  MEDICAL_CHECKUP
+  COUNSELING
+  EDUCATION
+  FINANCIAL_AID
+  RESCUE
+  OTHER
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+  FIELD_WORKER
+  VOLUNTEER
+}
